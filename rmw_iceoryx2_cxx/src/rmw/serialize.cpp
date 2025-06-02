@@ -7,13 +7,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#include <iostream>
+
 #include "rmw/ret_types.h"
 #include "rmw/rmw.h"
 #include "rmw_iceoryx2_cxx/impl/common/ensure.hpp"
 #include "rmw_iceoryx2_cxx/impl/common/error_message.hpp"
 #include "rosidl_typesupport_cpp/message_type_support.hpp"
+#include "rosidl_typesupport_fastrtps_c/identifier.h"
 #include "rosidl_typesupport_fastrtps_cpp/identifier.hpp"
 #include "rosidl_typesupport_fastrtps_cpp/message_type_support.h"
+
+#include "flatros2/typesupport.hpp"
 
 const char* const rmw_iox2_serialization_format = "iceoryx2";
 
@@ -41,12 +46,28 @@ rmw_ret_t rmw_serialize(const void* ros_message,
 
     // Implementation -------------------------------------------------------------------------------
 
+    // Handle flat typesupport (no-op)
+    if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
+        rmw_ret_t ret = rmw_serialized_message_resize(serialized_message, ts->message_size);
+        if (RMW_RET_OK != ret) {
+          RMW_IOX2_CHAIN_ERROR_MSG("failed to serialize message");
+          return ret;
+        }
+        memcpy(serialized_message->buffer, ros_message, ts->message_size);
+        serialized_message->buffer_length = ts->message_size;
+        return RMW_RET_OK;
+    }
+
     // Handle for fastrtps typesupport
     const rosidl_message_type_support_t* handle =
-        get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_cpp::typesupport_identifier);
+        get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_c__identifier);
     if (!handle) {
-        RMW_IOX2_CHAIN_ERROR_MSG("failed to get typesupport handle");
-        return RMW_RET_ERROR;
+        handle = get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_cpp::typesupport_identifier);
+        if (!handle) {
+            RMW_IOX2_CHAIN_ERROR_MSG("failed to get typesupport handle");
+            return RMW_RET_ERROR;
+        }
     }
 
     // FastRTPS-specific callbacks
@@ -68,6 +89,7 @@ rmw_ret_t rmw_serialize(const void* ros_message,
         callbacks->cdr_serialize(ros_message, serializer);
     }
     catch (std::exception& e) {
+        std::cout << e.what() << std::endl;
         RMW_IOX2_CHAIN_ERROR_MSG("failed to serialize");
         return RMW_RET_ERROR;
     }
@@ -87,12 +109,21 @@ rmw_ret_t rmw_deserialize(const rmw_serialized_message_t* serialized_message,
 
     // Implementation -------------------------------------------------------------------------------
 
+    // Handle flat typesupport (no-op)
+    if (get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        memcpy(ros_message, serialized_message->buffer, serialized_message->buffer_length);
+        return RMW_RET_OK;
+    }
+
     // Handle for fastrtps typesupport
     const rosidl_message_type_support_t* handle =
-        get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_cpp::typesupport_identifier);
+        get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_c__identifier);
     if (!handle) {
-        RMW_IOX2_CHAIN_ERROR_MSG("failed to get typesupport handle");
-        return RMW_RET_ERROR;
+        handle = get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_cpp::typesupport_identifier);
+        if (!handle) {
+            RMW_IOX2_CHAIN_ERROR_MSG("failed to get typesupport handle");
+            return RMW_RET_ERROR;
+        }
     }
 
     // FastRTPS-specific callbacks

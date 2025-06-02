@@ -33,6 +33,7 @@ bool is_dynamic_string(const rosidl_typesupport_introspection_cpp::MessageMember
 bool is_pod(const rosidl_typesupport_introspection_cpp::MessageMembers* members);
 
 bool is_pod(const rosidl_message_type_support_t* type_support);
+RMW_PUBLIC void *message_image(const rosidl_message_type_support_t* type_support);
 RMW_PUBLIC size_t message_size(const rosidl_message_type_support_t* type_support);
 RMW_PUBLIC size_t serialized_message_size(const void* ros_message, const rosidl_message_type_support_t* type_support);
 

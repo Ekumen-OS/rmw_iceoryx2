@@ -47,6 +47,7 @@ set(AMENT_PACKAGES
     rosidl_typesupport_fastrtps_c
     rosidl_typesupport_fastrtps_cpp
     fastcdr
+    flatros2
 )
 foreach(package ${AMENT_PACKAGES})
     find_package(${package} REQUIRED)

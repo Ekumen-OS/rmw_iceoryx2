@@ -103,10 +103,11 @@ auto Publisher::service_name() const -> const std::string& {
 }
 
 // TODO: Make return uint8_t
-auto Publisher::loan(uint64_t number_of_bytes) -> iox::expected<void*, ErrorType> {
+auto Publisher::loan() -> iox::expected<void*, ErrorType> {
     using iox::err;
     using iox::ok;
 
+    const uint64_t number_of_bytes = message_size(m_typesupport);
     auto sample = m_iox2_publisher->loan_slice_uninit(number_of_bytes);
     if (sample.has_error()) {
         return err(ErrorType::LOAN_FAILURE);
@@ -114,6 +115,10 @@ auto Publisher::loan(uint64_t number_of_bytes) -> iox::expected<void*, ErrorType
 
     // Store the sample for later use when publishing
     auto ptr = m_registry.store(std::move(sample.value()));
+
+    if (auto* image = message_image(m_typesupport)) {
+        memcpy(static_cast<void*>(ptr), image, number_of_bytes);
+    }
 
     return ok(static_cast<void*>(ptr));
 }

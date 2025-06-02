@@ -25,6 +25,7 @@
   <depend>rosidl_typesupport_introspection_c</depend>
   <depend>rosidl_typesupport_introspection_cpp</depend>
   <depend>fastcdr</depend>
+  <depend>flatros2</depend>
 
   <depend>iceoryx2_cxx</depend>
 

@@ -36,7 +36,7 @@ rmw_subscription_t* rmw_create_subscription(const rmw_node_t* rmw_node,
     RMW_IOX2_ENSURE_NOT_NULL(rmw_node->context->impl, nullptr);
     RMW_IOX2_ENSURE_IMPLEMENTATION(rmw_node->implementation_identifier, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(type_support, nullptr);
-    RMW_IOX2_ENSURE_VALID_TYPESUPPORT(type_support, nullptr);
+    //RMW_IOX2_ENSURE_VALID_TYPESUPPORT(type_support, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(topic_name, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(qos_profile, nullptr);
     RMW_IOX2_ENSURE_VALID_QOS(qos_profile, nullptr);

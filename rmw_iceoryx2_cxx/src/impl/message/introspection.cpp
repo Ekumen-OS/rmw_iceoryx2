@@ -10,11 +10,14 @@
 #include "rmw_iceoryx2_cxx/impl/message/introspection.hpp"
 
 #include "rmw_iceoryx2_cxx/impl/common/error_message.hpp"
+#include "rosidl_typesupport_fastrtps_c/identifier.h"
 #include "rosidl_typesupport_fastrtps_cpp/identifier.hpp"
 #include "rosidl_typesupport_fastrtps_cpp/message_type_support.h"
 #include "rosidl_typesupport_introspection_c/identifier.h"
 #include "rosidl_typesupport_introspection_cpp/field_types.hpp"
 #include "rosidl_typesupport_introspection_cpp/identifier.hpp"
+
+#include "flatros2/typesupport.hpp"
 
 namespace rmw::iox2
 {
@@ -103,10 +106,25 @@ bool is_pod(const rosidl_message_type_support_t* type_support) {
         auto members = static_cast<const rosidl_typesupport_introspection_cpp::MessageMembers*>(handle->data);
         return is_pod(members);
     }
+    if (get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        return true;
+    }
     return false;
 }
 
+void *message_image(const rosidl_message_type_support_t* type_support) {
+    if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
+        return ts->message_image;
+    }
+    return nullptr;
+}
+
 size_t message_size(const rosidl_message_type_support_t* type_support) {
+    if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
+        return ts->message_size;
+    }
     // Try C++ typesupport first
     if (auto handle = get_message_typesupport_handle(type_support,
                                                      rosidl_typesupport_introspection_cpp::typesupport_identifier)) {
@@ -128,8 +146,17 @@ size_t serialized_message_size(const void* ros_message, const rosidl_message_typ
     if (!type_support || !type_support->data) {
         return 0;
     }
+    if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
+        return ts->message_size;
+    }
     if (auto handle =
             get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_cpp::typesupport_identifier)) {
+        auto callbacks = static_cast<const message_type_support_callbacks_t*>(handle->data);
+        return 4 + callbacks->get_serialized_size(ros_message); // 4 bytes for CDR header
+    }
+    if (auto handle =
+            get_message_typesupport_handle(type_support, rosidl_typesupport_fastrtps_c__identifier)) {
         auto callbacks = static_cast<const message_type_support_callbacks_t*>(handle->data);
         return 4 + callbacks->get_serialized_size(ros_message); // 4 bytes for CDR header
     }

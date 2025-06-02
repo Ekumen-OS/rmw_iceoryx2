@@ -35,7 +35,7 @@ rmw_publisher_t* rmw_create_publisher(const rmw_node_t* rmw_node,
     RMW_IOX2_ENSURE_NOT_NULL(rmw_node->context->impl, nullptr);
     RMW_IOX2_ENSURE_IMPLEMENTATION(rmw_node->implementation_identifier, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(type_support, nullptr);
-    RMW_IOX2_ENSURE_VALID_TYPESUPPORT(type_support, nullptr);
+    //RMW_IOX2_ENSURE_VALID_TYPESUPPORT(type_support, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(topic_name, nullptr);
     RMW_IOX2_ENSURE_NOT_NULL(qos, nullptr);
     RMW_IOX2_ENSURE_VALID_QOS(qos, nullptr);
@@ -166,7 +166,7 @@ rmw_publish(const rmw_publisher_t* rmw_publisher, const void* ros_message, rmw_p
         // The serialized size of THIS specific message
         auto serialized_size = serialized_message_size(ros_message, type_support);
 
-        auto loan = publisher_impl.value()->loan(serialized_size);
+        auto loan = publisher_impl.value()->loan();
         if (loan.has_error()) {
             RMW_IOX2_CHAIN_ERROR_MSG("failed to loan bytes required for serialization");
             return RMW_RET_ERROR;
@@ -219,7 +219,7 @@ rmw_ret_t rmw_borrow_loaned_message(const rmw_publisher_t* rmw_publisher,
         return RMW_RET_ERROR;
     }
 
-    auto loan = publisher_impl.value()->loan(message_size(publisher_impl.value()->typesupport()));
+    auto loan = publisher_impl.value()->loan();
     if (loan.has_error()) {
         RMW_IOX2_CHAIN_ERROR_MSG("failed to loan memory for publisher payload");
         return RMW_RET_ERROR;

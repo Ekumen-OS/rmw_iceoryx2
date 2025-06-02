@@ -88,7 +88,7 @@ public:
 
     /// @brief Loan memory for zero-copy publishing
     /// @return Expected containing pointer to loaned memory or error
-    auto loan(uint64_t number_of_bytes) -> iox::expected<void*, ErrorType>;
+    auto loan() -> iox::expected<void*, ErrorType>;
 
     /// @brief Return previously loaned memory without publishing
     /// @param[in] loaned_memory Pointer to the loaned memory to return
