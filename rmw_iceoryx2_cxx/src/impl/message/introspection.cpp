@@ -148,6 +148,13 @@ size_t serialized_message_size(const void* ros_message, const rosidl_message_typ
     }
     if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
         auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
+        if (ts->unwrap_message) {
+            constexpr bool keep_wrapper = true;
+            size_t message_size = 0;
+            if (ts->unwrap_message(const_cast<void *>(ros_message), &message_size, keep_wrapper)) {
+                return message_size;
+            }
+        }
         return ts->message_size;
     }
     if (auto handle =

@@ -13,6 +13,7 @@
 #include "iox/type_traits.hpp"
 #include "iox2/listener.hpp"
 #include "iox2/node.hpp"
+#include "iox2/allocation_strategy.hpp"
 #include "iox2/notifier.hpp"
 #include "iox2/publisher.hpp"
 #include "iox2/sample.hpp"

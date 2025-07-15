@@ -30,12 +30,6 @@ struct Error<Subscriber>
     using Type = SubscriberError;
 };
 
-struct SubscriberLoan
-{
-    uint8_t* bytes;
-    size_t number_of_bytes;
-};
-
 /// @brief Implementation of the RMW subscriber for iceoryx2
 /// @details The implementation supports both copy and loan-based data access patterns,
 ///          allowing for efficient zero-copy communication when possible.
@@ -48,14 +42,13 @@ public:
     using ErrorType = Error<Subscriber>::Type;
     using Payload = ::iox::Slice<uint8_t>;
 
-private:
     using RawIdType = ::iox2::RawIdType;
     using IdType = ::iox2::UniqueSubscriberId;
     using IceoryxSubscriber = Iceoryx2::InterProcess::Subscriber<Payload>;
     using IceoryxSample = Iceoryx2::InterProcess::Sample<Payload>;
     using IceoryxSampleRegistry = SampleRegistry<IceoryxSample>;
+    using IceoryxSampleLoan = Payload;
 
-public:
     /// @brief Constructor for SubscriberImpl
     /// @param[in] lock Creation lock to restrict construction to creation functions
     /// @param[out] error Optional error that is set if construction fails
@@ -87,11 +80,11 @@ public:
     /// @brief Take a message by copying it to the destination buffer
     /// @param[out] dest Pointer to the destination buffer
     /// @return Expected containing true if a message was taken, false if no message available
-    auto take_copy(void* dest) -> iox::expected<bool, ErrorType>;
+    auto take() -> iox::expected<iox::optional<IceoryxSample>, ErrorType>;
 
     /// @brief Take a loaned message without copying
     /// @return Expected containing optional pointer to the loaned message memory
-    auto take_loan() -> iox::expected<iox::optional<SubscriberLoan>, ErrorType>;
+    auto take_loan() -> iox::expected<iox::optional<IceoryxSampleLoan>, ErrorType>;
 
     /// @brief Return previously loaned message memory
     /// @param[in] loaned_memory Pointer to the loaned memory to return

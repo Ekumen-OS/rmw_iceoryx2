@@ -75,7 +75,7 @@ auto Subscriber::service_name() const -> const std::string& {
     return m_service_name;
 }
 
-auto Subscriber::take_copy(void* dest) -> iox::expected<bool, ErrorType> {
+auto Subscriber::take() -> iox::expected<iox::optional<IceoryxSample>, ErrorType> {
     using iox::err;
     using iox::nullopt;
     using iox::ok;
@@ -85,19 +85,11 @@ auto Subscriber::take_copy(void* dest) -> iox::expected<bool, ErrorType> {
         RMW_IOX2_CHAIN_ERROR_MSG(::iox::into<const char*>(result.error()));
         return err(ErrorType::RECV_FAILURE);
     } else {
-        auto sample = std::move(result.value());
-
-        if (sample.has_value()) {
-            auto payload = sample.value().payload();
-            auto number_of_bytes = payload.number_of_bytes();
-            std::memcpy(dest, payload.data(), number_of_bytes);
-        }
-
-        return ok(sample.has_value());
+        return ok(std::move(result.value()));
     }
 }
 
-auto Subscriber::take_loan() -> iox::expected<iox::optional<SubscriberLoan>, ErrorType> {
+auto Subscriber::take_loan() -> iox::expected<iox::optional<IceoryxSampleLoan>, ErrorType> {
     using iox::err;
     using iox::nullopt;
     using iox::ok;
@@ -111,14 +103,15 @@ auto Subscriber::take_loan() -> iox::expected<iox::optional<SubscriberLoan>, Err
     auto sample = std::move(result.value());
 
     if (sample.has_value()) {
-        auto data = sample->payload().data();
-        auto number_of_bytes = sample->payload().number_of_bytes();
+        auto sample_loan = IceoryxSampleLoan(
+            const_cast<uint8_t *>(sample->payload().data()),
+            sample->payload().number_of_elements() 
+        );
         m_registry.store(std::move(sample.value()));
 
-        // Const cast required because of RMW API
-        return ok(optional<SubscriberLoan>({const_cast<uint8_t*>(data), number_of_bytes}));
+        return ok(optional<IceoryxSampleLoan>(std::move(sample_loan)));
     } else {
-        return ok(optional<SubscriberLoan>{nullopt});
+        return ok(optional<IceoryxSampleLoan>{nullopt});
     }
 }
 

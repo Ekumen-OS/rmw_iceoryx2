@@ -20,6 +20,7 @@
 #include "rmw_iceoryx2_cxx/impl/common/error_message.hpp"
 #include "rmw_iceoryx2_cxx/impl/common/log.hpp"
 #include "rmw_iceoryx2_cxx/impl/message/introspection.hpp"
+#include "rmw_iceoryx2_cxx/impl/message/typesupport.hpp"
 #include "rmw_iceoryx2_cxx/impl/runtime/context.hpp"
 
 extern "C" {
@@ -65,7 +66,7 @@ rmw_publisher_t* rmw_create_publisher(const rmw_node_t* rmw_node,
     }
     rmw_publisher->implementation_identifier = rmw_get_implementation_identifier();
 
-    if (is_pod(type_support)) {
+    if (is_pod(type_support) && message_size(type_support) > 0) {
         rmw_publisher->can_loan_messages = true;
     } else {
         rmw_publisher->can_loan_messages = false;
@@ -142,6 +143,8 @@ rmw_publish(const rmw_publisher_t* rmw_publisher, const void* ros_message, rmw_p
     using PublisherImpl = ::rmw::iox2::Publisher;
     using ::rmw::iox2::serialized_message_size;
     using ::rmw::iox2::unsafe_cast;
+    using ::rmw::iox2::unwrap_message;
+
 
     RMW_IOX2_LOG_DEBUG("Publishing to '%s'", rmw_publisher->topic_name);
 
@@ -150,38 +153,40 @@ rmw_publish(const rmw_publisher_t* rmw_publisher, const void* ros_message, rmw_p
         RMW_IOX2_CHAIN_ERROR_MSG("failed to retrieve Publisher");
         return RMW_RET_ERROR;
     }
-
+    
+    auto type_support = publisher_impl.value()->typesupport();
     if (rmw_publisher->can_loan_messages) {
         // Self-contained. Copy message into payload.
-        if (auto result =
-                publisher_impl.value()->publish_copy(ros_message, publisher_impl.value()->unserialized_size());
-            result.has_error()) {
-            RMW_IOX2_CHAIN_ERROR_MSG("failed to publish copy");
+        size_t number_of_bytes = 0;
+        constexpr bool move_on_unwrap = true;
+        uint8_t *bytes = unwrap_message(type_support, const_cast<void *>(ros_message), &number_of_bytes, !move_on_unwrap);
+        if (auto result = publisher_impl.value()->publish(bytes, number_of_bytes); result.has_error()) {
+            RMW_IOX2_CHAIN_ERROR_MSG("failed to publish");
             return RMW_RET_ERROR;
         }
     } else {
         // Non-self-contained. Serialize message into payload.
-        auto type_support = publisher_impl.value()->typesupport();
-
-        // The serialized size of THIS specific message
-        auto serialized_size = serialized_message_size(ros_message, type_support);
-
-        auto loan = publisher_impl.value()->loan();
+        const auto serialized_size = serialized_message_size(ros_message, type_support);
+        if (serialized_size == 0u) {
+            RMW_IOX2_CHAIN_ERROR_MSG("failed to determine serialized message size");
+            return RMW_RET_ERROR;
+        }
+        auto loan = publisher_impl.value()->loan(serialized_size);
         if (loan.has_error()) {
             RMW_IOX2_CHAIN_ERROR_MSG("failed to loan bytes required for serialization");
             return RMW_RET_ERROR;
         }
 
-        auto serialized_message = rmw_serialized_message_t{reinterpret_cast<uint8_t*>(loan.value()),
-                                                           serialized_size,
-                                                           serialized_size,
+        auto serialized_message = rmw_serialized_message_t{loan->data(),
+                                                           loan->number_of_elements(),
+                                                           loan->number_of_elements(),
                                                            rcutils_get_default_allocator()};
 
         if (auto result = rmw_serialize(ros_message, type_support, &serialized_message); result != RMW_RET_OK) {
             RMW_IOX2_CHAIN_ERROR_MSG("failed to serialize into loaned payload");
             return RMW_RET_ERROR;
         }
-        if (auto result = publisher_impl.value()->publish_loan(loan.value()); result.has_error()) {
+        if (auto result = publisher_impl.value()->publish_loan(loan->data()); result.has_error()) {
             RMW_IOX2_CHAIN_ERROR_MSG("failed to publish serialized payload");
             return RMW_RET_ERROR;
         }
@@ -210,6 +215,7 @@ rmw_ret_t rmw_borrow_loaned_message(const rmw_publisher_t* rmw_publisher,
     using PublisherImpl = ::rmw::iox2::Publisher;
     using ::rmw::iox2::message_size;
     using ::rmw::iox2::unsafe_cast;
+    using ::rmw::iox2::wrap_message;
 
     RMW_IOX2_LOG_DEBUG("Borrowing loan from '%s'", rmw_publisher->topic_name);
 
@@ -218,13 +224,13 @@ rmw_ret_t rmw_borrow_loaned_message(const rmw_publisher_t* rmw_publisher,
         RMW_IOX2_CHAIN_ERROR_MSG("failed to retrieve Publisher");
         return RMW_RET_ERROR;
     }
-
-    auto loan = publisher_impl.value()->loan();
+    auto typesupport = publisher_impl.value()->typesupport();
+    auto loan = publisher_impl.value()->loan(message_size(typesupport));
     if (loan.has_error()) {
         RMW_IOX2_CHAIN_ERROR_MSG("failed to loan memory for publisher payload");
         return RMW_RET_ERROR;
     }
-    *ros_message = loan.value();
+    *ros_message = wrap_message(typesupport, loan->data(), loan->number_of_elements());
 
     return RMW_RET_OK;
 }
@@ -243,6 +249,7 @@ rmw_ret_t rmw_return_loaned_message_from_publisher(const rmw_publisher_t* rmw_pu
     // Implementation -------------------------------------------------------------------------------
     using PublisherImpl = ::rmw::iox2::Publisher;
     using ::rmw::iox2::unsafe_cast;
+    using ::rmw::iox2::unwrap_message;
 
     RMW_IOX2_LOG_DEBUG("Returning loan to '%s'", rmw_publisher->topic_name);
 
@@ -251,8 +258,9 @@ rmw_ret_t rmw_return_loaned_message_from_publisher(const rmw_publisher_t* rmw_pu
         RMW_IOX2_CHAIN_ERROR_MSG("failed to retrieve Publisher");
         return RMW_RET_ERROR;
     }
-
-    if (auto result = publisher_impl.value()->return_loan(loaned_message); result.has_error()) {
+    auto typesupport = publisher_impl.value()->typesupport();
+    uint8_t *loaned_bytes = unwrap_message(typesupport, loaned_message);
+    if (auto result = publisher_impl.value()->return_loan(loaned_bytes); result.has_error()) {
         RMW_IOX2_CHAIN_ERROR_MSG("failed to return loaned message to publisher");
         return RMW_RET_ERROR;
     }
@@ -271,6 +279,7 @@ rmw_ret_t rmw_publish_loaned_message(const rmw_publisher_t* rmw_publisher,
     // Implementation -------------------------------------------------------------------------------
     using PublisherImpl = ::rmw::iox2::Publisher;
     using ::rmw::iox2::unsafe_cast;
+    using ::rmw::iox2::unwrap_message;
 
     RMW_IOX2_LOG_DEBUG("Publishing loan to '%s'", rmw_publisher->topic_name);
 
@@ -280,7 +289,9 @@ rmw_ret_t rmw_publish_loaned_message(const rmw_publisher_t* rmw_publisher,
         return RMW_RET_ERROR;
     }
 
-    if (auto result = publisher_impl.value()->publish_loan(ros_message); result.has_error()) {
+    auto typesupport = publisher_impl.value()->typesupport();
+    uint8_t *loaned_bytes = unwrap_message(typesupport, ros_message);
+    if (auto result = publisher_impl.value()->publish_loan(loaned_bytes); result.has_error()) {
         RMW_IOX2_CHAIN_ERROR_MSG("failed to publish loaned message");
         return RMW_RET_ERROR;
     }
@@ -311,7 +322,7 @@ rmw_ret_t rmw_publish_serialized_message(const rmw_publisher_t* rmw_publisher,
     // Copy serialized payload into `iceoryx2` payload
     // WARNING: This publish variant is usable if ONLY serialized payloads are published on this topic.
     if (auto result =
-            publisher_impl.value()->publish_copy(serialized_message->buffer, serialized_message->buffer_length);
+            publisher_impl.value()->publish(serialized_message->buffer, serialized_message->buffer_length);
         result.has_error()) {
         RMW_IOX2_CHAIN_ERROR_MSG("failed to publish copy");
         return RMW_RET_ERROR;

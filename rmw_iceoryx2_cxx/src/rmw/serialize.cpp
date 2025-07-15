@@ -13,6 +13,7 @@
 #include "rmw/rmw.h"
 #include "rmw_iceoryx2_cxx/impl/common/ensure.hpp"
 #include "rmw_iceoryx2_cxx/impl/common/error_message.hpp"
+#include "rmw_iceoryx2_cxx/impl/message/typesupport.hpp"
 #include "rosidl_typesupport_cpp/message_type_support.hpp"
 #include "rosidl_typesupport_fastrtps_c/identifier.h"
 #include "rosidl_typesupport_fastrtps_cpp/identifier.hpp"
@@ -45,17 +46,17 @@ rmw_ret_t rmw_serialize(const void* ros_message,
     RMW_IOX2_ENSURE_NOT_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
     // Implementation -------------------------------------------------------------------------------
+    using ::rmw::iox2::unwrap_message;
 
     // Handle flat typesupport (no-op)
-    if (auto handle = get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
-        auto ts = static_cast<const flatros2::flat_message_type_support_t *>(handle->data);
-        rmw_ret_t ret = rmw_serialized_message_resize(serialized_message, ts->message_size);
-        if (RMW_RET_OK != ret) {
-          RMW_IOX2_CHAIN_ERROR_MSG("failed to serialize message");
-          return ret;
-        }
-        memcpy(serialized_message->buffer, ros_message, ts->message_size);
-        serialized_message->buffer_length = ts->message_size;
+    if (get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
+        size_t number_of_bytes = 0;
+        constexpr bool move_on_unwrap = true;
+        uint8_t * bytes = unwrap_message(
+            type_support, const_cast<void *>(ros_message), 
+            &number_of_bytes, !move_on_unwrap);
+        memcpy(serialized_message->buffer, bytes, number_of_bytes);
+        serialized_message->buffer_length = number_of_bytes;
         return RMW_RET_OK;
     }
 
@@ -108,10 +109,16 @@ rmw_ret_t rmw_deserialize(const rmw_serialized_message_t* serialized_message,
     RMW_IOX2_ENSURE_NOT_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
     // Implementation -------------------------------------------------------------------------------
+    using ::rmw::iox2::wrap_message;
 
     // Handle flat typesupport (no-op)
     if (get_message_typesupport_handle(type_support, flatros2::typesupport_identifier)) {
-        memcpy(ros_message, serialized_message->buffer, serialized_message->buffer_length);
+        constexpr bool copy_on_wrap = true;
+        wrap_message(
+            type_support, serialized_message->buffer, 
+            serialized_message->buffer_length, ros_message,
+            copy_on_wrap
+        );
         return RMW_RET_OK;
     }
 
